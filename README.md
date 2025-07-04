@@ -1,7 +1,10 @@
 # GoDDNS-Router
 
-A lightweight DDNS updater written in Go, designed for embedded Linux routers such as **OpenWRT** and **iStoreOS-N100**.  
-It currently supports **IPv6 only**, and updates records by identifying active local devices using their **MAC addresses** and **IPv6 neighbor table** (`ip -6 neigh`).
+A lightweight DDNS updater written in Go, designed for embedded Linux routers such as OpenWRT and iStoreOS-N100.
+
+This tool automatically creates, updates, and removes DNS records via the Cloudflare API, based on the current active devices discovered through the IPv6 neighbor table (ip -6 neigh) and MAC address matching.
+
+No daemon is required, and the binary is self-contained with zero runtime dependencies (CGO_ENABLED=0).
 
 > 🧠 The tool is ideal for **router environments**. If run on a PC or VM, it can usually only update the DDNS for the **local machine itself**, due to limited access to neighbor entries.
 
