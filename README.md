@@ -24,15 +24,15 @@ It currently supports **IPv6 only**, and updates records by identifying active l
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ddns-golang-app ./
 ```
 
-🚀 Usage
+## 🚀 Usage
 
-    Copy the binary and a config.json file to your router or Linux server.
+- Copy the binary and a config.json file to your router or Linux server.
 
-    Add a scheduled task to run the binary periodically (e.g., via crontab).
+- Add a scheduled task to run the binary periodically (e.g., via crontab).
 
-    Each execution will scan your LAN and update DNS records via Cloudflare.
+- Each execution will scan your LAN and update DNS records via Cloudflare.
 
-📄 config.json Example (multi-device)
+## 📄 config.json Example (multi-device)
 ```json
 {
   "uniqueToken": "iStoreOS-N100",
@@ -81,9 +81,9 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ddn
 ```
 
 
-🖥️ Minimal Config (Local-only DDNS)
+## 🖥️ Minimal Config (Local-only DDNS)
 
-If you're only using this on a single device (e.g., your personal computer):
+- If you're only using this on a single device (e.g., your personal computer):
 
 ```json
 {
@@ -108,17 +108,14 @@ If you're only using this on a single device (e.g., your personal computer):
 }
 ```
 
-🧠 Notes
+## 🧠 Notes
 
-    MAC addresses are matched to IPv6 addresses via ip -6 neigh, so this tool requires access to your LAN's neighbor cache.
+- MAC addresses are matched to IPv6 addresses via `ip -6 neigh`, so this tool requires access to your LAN's neighbor cache.
+- This tool does not run as a daemon; each execution updates once and exits.
+- Make sure Cloudflare API credentials have permissions to manage DNS records.
+- All records updated are of type `AAAA` (IPv6).
 
-    This tool does not run as a daemon; each execution updates once and exits.
-
-    Make sure Cloudflare API credentials have permissions to manage DNS records.
-
-    All records updated are of type AAAA (IPv6).
-
-📄 License
+## 📄 License
 
 Copyright © 2025 SoHugePenguin
 
