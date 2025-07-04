@@ -1,16 +1,39 @@
-<h1>DDNS-family-golang-app</h1>
-<h3 style="color: red">目前仅支持ipv6，原理是利用mac 和 ip neigh网络邻居获取ipv6
-<br/>所以应该在openWrt、iStoreOS-N100等路由器上linux环境运行。</h3>
+# GoDDNS-Router
 
-<p style="color: darkorange">只是放在自己电脑或虚拟机上应该只能用本机ddns而不能家庭全部成员ddns，探测不积极</p>
+A lightweight DDNS updater written in Go, designed for embedded Linux routers such as **OpenWRT** and **iStoreOS-N100**.  
+It currently supports **IPv6 only**, and updates records by identifying active local devices using their **MAC addresses** and **IPv6 neighbor table** (`ip -6 neigh`).
 
-linux部署方式(amd64)：
-<p>CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ddns-golang-app ./</p>
+> 🧠 The tool is ideal for **router environments**. If run on a PC or VM, it can usually only update the DDNS for the **local machine itself**, due to limited access to neighbor entries.
 
+---
 
-<p>config.json 格式示例：</p>
-<h3>注意，mac，域名前后缀等参数以自己的为准，不要照抄</h3>
-<pre>
+## ✨ Features
+
+- [x] ⚙️ Zero-dependency binary for Linux (built with `CGO_ENABLED=0`)
+- [x] 🧩 Supports Cloudflare DNS API
+- [x] 📡 Full IPv6 device discovery via `ip neigh` + MAC matching
+- [x] 🔁 Suitable for periodic execution (e.g., via `crontab`)
+- [x] 🧠 Simple JSON-based configuration
+- [ ] 🖥️ Also usable on personal machines (e.g., DMZ server setup)
+
+---
+
+## 🛠 Build (for Linux AMD64)
+
+```bash
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ddns-golang-app ./
+```
+
+🚀 Usage
+
+    Copy the binary and a config.json file to your router or Linux server.
+
+    Add a scheduled task to run the binary periodically (e.g., via crontab).
+
+    Each execution will scan your LAN and update DNS records via Cloudflare.
+
+📄 config.json Example (multi-device)
+```json
 {
   "uniqueToken": "iStoreOS-N100",
   "cloudflareEmail": "your-cloudflare-email",
@@ -22,43 +45,47 @@ linux部署方式(amd64)：
     "00:00:00:00:00:00": [
       {
         "name": "n100",
-        "comment": "路由器iStoreOS-N100 linux"
+        "comment": "iStoreOS-N100 router"
       }
     ],
     "10:ff:e0:06:7d:f5": [
       {
         "name": "mz72",
-        "comment": "pve的远程运维web"
+        "comment": "PVE remote management"
       }
     ],
     "a0:36:9f:f7:f7:d5": [
       {
         "name": "pve",
-        "comment": "neigh"
+        "comment": "Proxmox host"
       }
     ],
     "bc:24:11:40:47:48": [
       {
         "name": "virt210",
-        "comment": "win2k22-Penguin-0"
+        "comment": "Windows Server 2022 - Penguin"
       }
     ],
     "bc:24:11:42:15:81": [
       {
         "name": "virt211",
-        "comment": "win2k22-XiaoYan-0"
+        "comment": "Windows Server 2022 - XiaoYan"
       },
       {
         "name": "xiaoyan",
-        "comment": "win2k22-XiaoYan-0 额外开的"
+        "comment": "XiaoYan alias"
       }
     ]
   }
 }
-</pre>
+```
 
-<h3 style="color: red">如果你只是想给自己设备DDNS，recordMap只用填00:00:00:00:00:00就可以了</h3>
-<pre>
+
+🖥️ Minimal Config (Local-only DDNS)
+
+If you're only using this on a single device (e.g., your personal computer):
+
+```json
 {
   "uniqueToken": "my-computer001",
   "cloudflareEmail": "your-cloudflare-email",
@@ -70,13 +97,30 @@ linux部署方式(amd64)：
     "00:00:00:00:00:00": [
       {
         "name": "your-name",
-        "comment": "我的电脑"
+        "comment": "My computer"
       },
       {
-        "name": "your-name222",
-        "comment": "我的电脑别名"
+        "name": "your-name2",
+        "comment": "Alias name"
       }
     ]
   }
 }
-</pre>
+```
+
+🧠 Notes
+
+    MAC addresses are matched to IPv6 addresses via ip -6 neigh, so this tool requires access to your LAN's neighbor cache.
+
+    This tool does not run as a daemon; each execution updates once and exits.
+
+    Make sure Cloudflare API credentials have permissions to manage DNS records.
+
+    All records updated are of type AAAA (IPv6).
+
+📄 License
+
+Copyright © 2025 SoHugePenguin
+
+This project is licensed under the GNU Lesser General Public License v3.0.
+See the LICENSE file for full details.
