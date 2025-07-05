@@ -17,7 +17,7 @@ No daemon is required, and the binary is self-contained with zero runtime depend
 - [x] 📡 Full IPv6 device discovery via `ip neigh` + MAC matching
 - [x] 🔁 Suitable for periodic execution (e.g., via `crontab`)
 - [x] 🧠 Simple JSON-based configuration
-- [ ] 🖥️ Also usable on personal machines (e.g., DMZ server setup)
+- [x] 🖥️ Also usable on personal machines (e.g., DMZ server setup)
 
 ---
 
@@ -38,6 +38,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ddn
 ## 📄 config.json Example (multi-device)
 ```json
 {
+  "ownIpv4Enabled": false,
   "uniqueToken": "iStoreOS-N100",
   "cloudflareEmail": "your-cloudflare-email",
   "cloudflareApiKey": "your-cloudflare-api-key",
@@ -90,6 +91,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ddn
 
 ```json
 {
+  "ownIpv4Enabled": true,
   "uniqueToken": "my-computer001",
   "cloudflareEmail": "your-cloudflare-email",
   "cloudflareApiKey": "your-cloudflare-api-key",

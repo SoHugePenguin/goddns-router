@@ -19,6 +19,8 @@ import (
 )
 
 type Config struct {
+	// 开启后，MAC为00:00:00:00:00:00 的将会用三方api获取IPV4并解析
+	OwnIpv4Enabled      bool                     `json:"ownIpv4Enabled"`
 	LocalIpv4AddrApiUrl string                   `yaml:"localIpv4AddrApiUrl"`
 	LocalIpv6AddrApiUrl string                   `yaml:"localIpv6AddrApiUrl"`
 	UniqueToken         string                   `json:"uniqueToken"`
@@ -72,9 +74,6 @@ func main() {
 		panic(err)
 	}
 
-	// 所有本地出现过的ip，用于移除失效的ip避免堆积
-	localIpList := make([]string, 0)
-
 	// 本代码应该在路由器linux中执行，一般电脑不会主动扫描
 	// linkIndex 0 代表查找所有网络接口
 	neighs, err := netlink.NeighList(0, netlink.FAMILY_V6)
@@ -113,28 +112,34 @@ func main() {
 	neighs = filtered
 
 	// 数据包装成map
-	var macIpv6Map = make(map[string][]string)
+	var macIpMap = make(map[string][]string)
 
 	fmt.Println("\u001B[32m====================本机ipv6(公网)列表====================\u001B[0m")
 	for _, n := range neighs {
 		if n.HardwareAddr.String() == "00:00:00:00:00:00" {
 			continue // 本机ip 单独处理
 		}
-		macIpv6Map[n.HardwareAddr.String()] = append(macIpv6Map[n.HardwareAddr.String()], n.IP.String())
-		localIpList = append(localIpList, n.IP.String())
+		macIpMap[n.HardwareAddr.String()] = append(macIpMap[n.HardwareAddr.String()], n.IP.String())
 	}
 
 	// 本机ipv6获取
 	if config.RecordMap["00:00:00:00:00:00"] != nil {
 		myIpv6 := getLocalIpv6ByHttp()
 		if len(myIpv6) > 0 {
-			macIpv6Map["00:00:00:00:00:00"] = append(macIpv6Map["00:00:00:00:00:00"], myIpv6)
-			localIpList = append(localIpList, myIpv6)
+			macIpMap["00:00:00:00:00:00"] = append(macIpMap["00:00:00:00:00:00"], myIpv6)
+		}
+
+		// dmz ipv4 DDNS
+		if config.OwnIpv4Enabled {
+			myIpv4 := getLocalIpv4ByHttp()
+			if len(myIpv4) > 0 {
+				macIpMap["00:00:00:00:00:00"] = append(macIpMap["00:00:00:00:00:00"], myIpv4)
+			}
 		}
 
 	}
 
-	for mac, ipList := range macIpv6Map {
+	for mac, ipList := range macIpMap {
 		// MAC 00:00:00:00:00:00 为本机，使用第三方http api服务获取公网
 		localRecords := config.RecordMap[mac]
 		if localRecords != nil && len(localRecords) > 0 {
@@ -145,7 +150,7 @@ func main() {
 					fmt.Print("、")
 				}
 			}
-			fmt.Printf("\nMAC: %s\nipv6列表：\n", mac)
+			fmt.Printf("\nMAC: %s\nip列表：\n", mac)
 			for _, ip := range ipList {
 				fmt.Println(ip)
 			}
@@ -171,7 +176,7 @@ func main() {
 
 	cfRecordListResponse, err := client.DNS.Records.List(context.TODO(), dns.RecordListParams{
 		ZoneID: cloudflare.F(zoneId),
-		Type:   cloudflare.F(dns.RecordListParamsTypeAAAA), // 只要ipv6
+		//Type:   cloudflare.F(dns.RecordListParamsTypeAAAA), // 只要ipv6
 		Comment: cloudflare.F(
 			dns.RecordListParamsComment{
 				Startswith: cloudflare.F("DDNS-" + config.UniqueToken),
@@ -198,7 +203,7 @@ func main() {
 			// 检查cf中是否已都有macIpv6Map[mac]中的每一个ipv6
 			var okIpv6IdList []int
 			var isUpdated = false
-			for _, ipv6 := range macIpv6Map[mac] {
+			for _, ipv6 := range macIpMap[mac] {
 				var sameRecordNameCount = 0
 				ipv6IsOk := false
 				for id, v := range cfRecordListResponse.Result {
@@ -249,9 +254,16 @@ func main() {
 
 				// 更新失败，说明没有了，只能Posts新增了
 				if !isUpdated {
+					var ipType dns.RecordBatchParamsPostsType
+					if strings.Index(ipv6, ":") > 0 {
+						ipType = dns.RecordBatchParamsPostsTypeAAAA
+					} else {
+						ipType = dns.RecordBatchParamsPostsTypeA
+					}
+
 					batchPostParam = append(batchPostParam, dns.RecordBatchParamsPost{
 						Name:    cloudflare.F(configRecord.Name),
-						Type:    cloudflare.F(dns.RecordBatchParamsPostsTypeAAAA),
+						Type:    cloudflare.F(ipType),
 						Comment: cloudflare.F(fmt.Sprintf("DDNS-%s  %s", config.UniqueToken, configRecord.Comment)),
 						Content: cloudflare.F(ipv6),
 						Proxied: cloudflare.F(false), // 小黄云，代理后很慢
@@ -265,7 +277,8 @@ func main() {
 					continue
 				}
 
-				if sameRecordNameCount != len(macIpv6Map[mac]) {
+				// 保留一个作为缓存
+				if sameRecordNameCount > 1 && sameRecordNameCount != len(macIpMap[mac]) {
 					// 此处删除仅考虑*已有但冗余*的情况
 					for id, v := range cfRecordListResponse.Result {
 						if v.Name == fmt.Sprintf("%s.%s", configRecord.Name, config.DomainName) && !slices.Contains(okIpv6IdList, id) {
@@ -301,7 +314,7 @@ func main() {
 	// 当cf ipv6数大于有效邻居ipv6数应当删除无法访问的ipv6避免轮询到死ipv6
 	for _, v := range cfRecordListResponse.Result {
 		var recordIsExist = false
-		for _, ipv6List := range macIpv6Map {
+		for _, ipv6List := range macIpMap {
 			for _, ipv6 := range ipv6List {
 				if v.Content == ipv6 {
 					recordIsExist = true
