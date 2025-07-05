@@ -408,6 +408,13 @@ func loadConfig() (*Config, error) {
 		return nil, err
 	}
 
+	// 把所有 MAC 强制转成小写，避免程序遗漏
+	lowered := make(map[string][]LocalRecord)
+	for k, v := range cfg.RecordMap {
+		lowered[strings.ToLower(k)] = v
+	}
+	cfg.RecordMap = lowered
+
 	return &cfg, nil
 }
 
