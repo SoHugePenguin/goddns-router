@@ -33,6 +33,7 @@ type Config struct {
 type LocalRecord struct {
 	Name    string
 	Comment string
+	Proxy   bool
 }
 
 var config *Config
@@ -188,7 +189,8 @@ func main() {
 	}
 
 	// 批量队列，包含curd
-	var batchPutParam []dns.BatchPutUnionParam
+	var batchPatchParam []dns.BatchPatchUnionParam // 部分更新(首选)
+	var batchPutParam []dns.BatchPutUnionParam     // 全量更新，ip一致时报错 An identical record already exists
 	var batchPostParam []dns.RecordBatchParamsPostUnion
 	var batchDeleteParam []dns.RecordBatchParamsDelete
 
@@ -201,9 +203,9 @@ func main() {
 		for _, configRecord := range configRecords {
 
 			// 检查cf中是否已都有macIpv6Map[mac]中的每一个ipv6
-			var okIpv6IdList []int
+			var okIpIdList []int
 			var isUpdated = false
-			for _, ipv6 := range macIpMap[mac] {
+			for _, ip := range macIpMap[mac] {
 				var sameRecordNameCount = 0
 				ipv6IsOk := false
 				for id, v := range cfRecordListResponse.Result {
@@ -213,8 +215,11 @@ func main() {
 					}
 
 					// 注： 这里的configRecord.Name只是域名前缀，没有带主域名
-					if v.Name == fmt.Sprintf("%s.%s", configRecord.Name, config.DomainName) && v.Content == ipv6 {
-						okIpv6IdList = append(okIpv6IdList, id)
+					if v.Name == fmt.Sprintf("%s.%s", configRecord.Name, config.DomainName) &&
+						v.Content == ip &&
+						v.Proxied == configRecord.Proxy &&
+						v.Comment == fmt.Sprintf("DDNS-%s  %s", config.UniqueToken, configRecord.Comment) {
+						okIpIdList = append(okIpIdList, id)
 						ipv6IsOk = true
 						break
 					}
@@ -227,26 +232,82 @@ func main() {
 
 				// 更新只要失败过一次不再进行for循环
 				for id, v := range cfRecordListResponse.Result {
-					// 不要修改对的cfRecord
-					if v.Name == fmt.Sprintf("%s.%s", configRecord.Name, config.DomainName) && !slices.Contains(okIpv6IdList, id) {
-						batchPutParam = append(batchPutParam, dns.BatchPutAAAARecordParam{
-							ID: cloudflare.F(v.ID),
-							AAAARecordParam: dns.AAAARecordParam{
-								Name:    cloudflare.F(configRecord.Name),
-								Type:    cloudflare.F(dns.AAAARecordTypeAAAA),
-								Comment: cloudflare.F(fmt.Sprintf("DDNS-%s  %s", config.UniqueToken, configRecord.Comment)),
-								Content: cloudflare.F(ipv6),
-								Proxied: cloudflare.F(false), // 小黄云，代理后很慢
-								// 氪金玩意，免费版用不了，额度为0,报错：DNS record has 1 tags, exceeding the quota of 0.
-								//Tags: cloudflare.F([]dns.RecordTagsParam{
-								//	"ddns",
-								//}),
-								TTL: cloudflare.F(dns.TTL(60)),
-							},
-						})
+					var ipType string
+					if strings.Index(ip, ":") > 0 {
+						ipType = "AAAA"
+					} else {
+						ipType = "A"
+					}
+
+					// 不要修改对的cfRecord, 修改时要保证ipType是对的
+					if v.Name == fmt.Sprintf("%s.%s", configRecord.Name, config.DomainName) &&
+						!slices.Contains(okIpIdList, id) &&
+						string(v.Type) == ipType {
+						if ipType == "AAAA" {
+							if v.Content == ip {
+								// 部分更新(Patch)
+								batchPatchParam = append(batchPatchParam, dns.BatchPatchAAAARecordParam{
+									ID: cloudflare.F(v.ID),
+									AAAARecordParam: dns.AAAARecordParam{
+										Name: cloudflare.F(configRecord.Name),
+										Comment: cloudflare.F(fmt.Sprintf("DDNS-%s  %s",
+											config.UniqueToken, configRecord.Comment)),
+										Proxied: cloudflare.F(configRecord.Proxy), // 小黄云，代理后很慢
+										TTL:     cloudflare.F(dns.TTL(60)),
+									},
+								})
+							} else {
+								// 全量更新（Put）
+								batchPutParam = append(batchPutParam, dns.BatchPutAAAARecordParam{
+									ID: cloudflare.F(v.ID),
+									AAAARecordParam: dns.AAAARecordParam{
+										Name: cloudflare.F(configRecord.Name),
+										Type: cloudflare.F(dns.AAAARecordTypeAAAA),
+										Comment: cloudflare.F(fmt.Sprintf("DDNS-%s  %s",
+											config.UniqueToken, configRecord.Comment)),
+										Content: cloudflare.F(ip),
+										Proxied: cloudflare.F(configRecord.Proxy), // 小黄云，代理后很慢
+										// 氪金玩意，免费版用不了，额度为0,报错：DNS record has 1 tags, exceeding the quota of 0.
+										//Tags: cloudflare.F([]dns.RecordTagsParam{
+										//	"ddns",
+										//}),
+										TTL: cloudflare.F(dns.TTL(60)),
+									},
+								})
+							}
+						} else {
+							if v.Content == ip {
+								// 部分更新(Patch)
+								batchPatchParam = append(batchPatchParam, dns.BatchPatchARecordParam{
+									ID: cloudflare.F(v.ID),
+									ARecordParam: dns.ARecordParam{
+										Name: cloudflare.F(configRecord.Name),
+										Comment: cloudflare.F(fmt.Sprintf("DDNS-%s  %s",
+											config.UniqueToken, configRecord.Comment)),
+										Proxied: cloudflare.F(configRecord.Proxy), // 小黄云，代理后很慢
+										TTL:     cloudflare.F(dns.TTL(60)),
+									},
+								})
+							} else {
+								// 全量更新（Put）
+								batchPutParam = append(batchPutParam, dns.BatchPutARecordParam{
+									ID: cloudflare.F(v.ID),
+									ARecordParam: dns.ARecordParam{
+										Name: cloudflare.F(configRecord.Name),
+										Type: cloudflare.F(dns.ARecordTypeA),
+										Comment: cloudflare.F(fmt.Sprintf("DDNS-%s  %s",
+											config.UniqueToken, configRecord.Comment)),
+										Content: cloudflare.F(ip),
+										Proxied: cloudflare.F(configRecord.Proxy), // 小黄云，代理后很慢
+										TTL:     cloudflare.F(dns.TTL(60)),
+									},
+								})
+							}
+						}
+
 						// 加入修改队列后这个id也是对的了
 						cannotDeleteList = append(cannotDeleteList, v.ID)
-						okIpv6IdList = append(okIpv6IdList, id)
+						okIpIdList = append(okIpIdList, id)
 						isUpdated = true
 						break
 					}
@@ -255,18 +316,19 @@ func main() {
 				// 更新失败，说明没有了，只能Posts新增了
 				if !isUpdated {
 					var ipType dns.RecordBatchParamsPostsType
-					if strings.Index(ipv6, ":") > 0 {
+					if strings.Index(ip, ":") > 0 {
 						ipType = dns.RecordBatchParamsPostsTypeAAAA
 					} else {
 						ipType = dns.RecordBatchParamsPostsTypeA
 					}
 
 					batchPostParam = append(batchPostParam, dns.RecordBatchParamsPost{
-						Name:    cloudflare.F(configRecord.Name),
-						Type:    cloudflare.F(ipType),
-						Comment: cloudflare.F(fmt.Sprintf("DDNS-%s  %s", config.UniqueToken, configRecord.Comment)),
-						Content: cloudflare.F(ipv6),
-						Proxied: cloudflare.F(false), // 小黄云，代理后很慢
+						Name: cloudflare.F(configRecord.Name),
+						Type: cloudflare.F(ipType),
+						Comment: cloudflare.F(fmt.Sprintf("DDNS-%s  %s",
+							config.UniqueToken, configRecord.Comment)),
+						Content: cloudflare.F(ip),
+						Proxied: cloudflare.F(configRecord.Proxy), // 小黄云，代理后很慢
 						TTL:     cloudflare.F(dns.TTL(60)),
 					})
 				}
@@ -281,7 +343,8 @@ func main() {
 				if sameRecordNameCount > 1 && sameRecordNameCount != len(macIpMap[mac]) {
 					// 此处删除仅考虑*已有但冗余*的情况
 					for id, v := range cfRecordListResponse.Result {
-						if v.Name == fmt.Sprintf("%s.%s", configRecord.Name, config.DomainName) && !slices.Contains(okIpv6IdList, id) {
+						if v.Name == fmt.Sprintf("%s.%s", configRecord.Name, config.DomainName) &&
+							!slices.Contains(okIpIdList, id) {
 							// 加入删除队列
 							batchDeleteParam = append(batchDeleteParam, dns.RecordBatchParamsDelete{
 								ID: cloudflare.F(v.ID),
@@ -328,15 +391,22 @@ func main() {
 		}
 	}
 
-	if len(batchPutParam) == 0 && len(batchPostParam) == 0 && len(batchDeleteParam) == 0 {
+	if len(batchPatchParam) == 0 &&
+		len(batchPutParam) == 0 &&
+		len(batchPostParam) == 0 &&
+		len(batchDeleteParam) == 0 {
 		fmt.Println("无需进行任何操作，本次ddns已结束！")
 		return
 	}
-	fmt.Printf("本次共需要更新%d条，新增%d条，删除%d条record\n",
-		len(batchPutParam), len(batchPostParam), len(batchDeleteParam))
+	fmt.Printf("本次共需要全量更新%d条，部分更新%d条，新增%d条，删除%d条record\n",
+		len(batchPutParam),
+		len(batchPatchParam),
+		len(batchPostParam),
+		len(batchDeleteParam))
 
 	body, err := json.Marshal(dns.RecordBatchParams{
 		ZoneID:  cloudflare.F(zoneId),
+		Patches: cloudflare.F(batchPatchParam),
 		Deletes: cloudflare.F(batchDeleteParam),
 		Puts:    cloudflare.F(batchPutParam),
 		Posts:   cloudflare.F(batchPostParam),
@@ -352,8 +422,9 @@ func main() {
 	_, err = client.DNS.Records.Batch(context.TODO(), dns.RecordBatchParams{
 		ZoneID:  cloudflare.F(zoneId),
 		Deletes: cloudflare.F(batchDeleteParam),
-		Puts:    cloudflare.F(batchPutParam),
+		Patches: cloudflare.F(batchPatchParam),
 		Posts:   cloudflare.F(batchPostParam),
+		Puts:    cloudflare.F(batchPutParam),
 	})
 	if err != nil {
 		panic(err.Error())

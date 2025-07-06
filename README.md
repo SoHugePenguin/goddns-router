@@ -24,7 +24,7 @@ No daemon is required, and the binary is self-contained with zero runtime depend
 ## 🛠 Build (for Linux AMD64)
 
 ```bash
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ddns-golang-app ./
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o router-ddns ./
 ```
 
 ## 🚀 Usage
@@ -49,35 +49,41 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ddn
     "00:00:00:00:00:00": [
       {
         "name": "n100",
-        "comment": "iStoreOS-N100 router"
+        "comment": "iStoreOS-N100 router",
+        "proxy": false
       }
     ],
     "10:ff:e0:06:7d:f5": [
       {
         "name": "mz72",
-        "comment": "PVE remote management"
+        "comment": "PVE remote management",
+        "proxy": false
       }
     ],
     "a0:36:9f:f7:f7:d5": [
       {
         "name": "pve",
-        "comment": "Proxmox host"
+        "comment": "Proxmox host",
+        "proxy": false
       }
     ],
     "bc:24:11:40:47:48": [
       {
         "name": "virt210",
-        "comment": "Windows Server 2022 - Penguin"
+        "comment": "Windows Server 2022 - Penguin",
+        "proxy": false
       }
     ],
     "bc:24:11:42:15:81": [
       {
         "name": "virt211",
-        "comment": "Windows Server 2022 - XiaoYan"
+        "comment": "Windows Server 2022 - XiaoYan",
+        "proxy": false
       },
       {
         "name": "xiaoyan",
-        "comment": "XiaoYan alias"
+        "comment": "XiaoYan alias",
+        "proxy": false
       }
     ]
   }
@@ -102,11 +108,13 @@ CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o ddn
     "00:00:00:00:00:00": [
       {
         "name": "your-name",
-        "comment": "My computer"
+        "comment": "My computer",
+        "proxy": false
       },
       {
         "name": "your-name2",
-        "comment": "Alias name"
+        "comment": "Alias name",
+        "proxy": false
       }
     ]
   }
